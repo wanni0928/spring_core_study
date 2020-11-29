@@ -174,7 +174,7 @@
 - 싱글톤 빈이 프로토타입 빈을 참조할 경우.
     - 프로토타입 빈이 업데이트가 안된다. 
     (싱글톤 빈은 애플리케이션 실행이후 한번 인스턴스화 되는데, 한번 인스턴스화 되는 빈이 다른 빈 하나를 참조하니, 코드상으로 몇번을 선언해도 결국 같은 빈만 참조하는 상황이 발생.)
-    - 이 경우를 해결하기 위한 방법.
+    - 이 경우를 해결하기 위한 방법. (@Scope 에서 proxy 패턴을 구현한 proxyMode을 이용한다. )
         ```java
         @Component @Scope(value = "prototype", proxyMode = ScopedProxyMode.TARGET_CLASS)
         public class Proto {
@@ -218,7 +218,175 @@
                 System.out.println(ctx.getBean(Single.class).getProto());
                 System.out.println(ctx.getBean(Single.class).getProto());
                 System.out.println(ctx.getBean(Single.class).getProto());
-                
+
             }
         }
         ```
+
+## IoC 컨테이너 : Enviroment 프로파일
+> 프로파일과 프로퍼티를 다루는 인터페이스.
+
+- ApplicationContext extends EnvironmentCapable
+    - getEnvironment()
+- 프로파일
+    - 빈들의 그룹
+    - Enviroment의 역할은 활성화할 프로파일 확인 및 설정.
+- 프로파일을 쓰는 이유
+    - 테스트 환경에서는 A라는 빈 사용.
+    - 배포 환경에서는 B라는 빈 사용.
+    - 환경에 따라 빈을 구분하여 사용하고 싶을 때 활용.
+- 프로파일 정의하기
+    - 클래스에 정의
+        ```java
+        @Repository
+        @Profile("test")
+        public class TestBookRepository implements BookRepository {
+        }
+
+        @Component
+        public class AppRunner implements ApplicationRunner {
+
+            @Autowired
+            ApplicationContext ctx;
+
+            @Autowired
+            BookRepository bookRepository;
+
+            @Override
+            public void run(ApplicationArguments args) throws Exception {
+                Environment environment = ctx.getEnvironment();
+                String property = environment.getProperty("app.name");
+                System.out.println(property);
+                System.out.println(environment.getProperty("app.about"));
+
+            }
+        }
+
+        @SpringBootApplication
+        @PropertySource("classpath:/app.properties")
+        public class BeanscopeApplication {
+
+            public static void main(String[] args) {
+                SpringApplication.run(BeanscopeApplication.class, args);
+            }
+
+        }
+        ```
+    - 메소드에 정의
+        - @Bean @Profile("test")
+
+    - 프로파일 표현식
+        - !(not)
+        - &(and)
+        - |(or)
+
+## MessageSource
+> 국제화(i18n) 기능을 제공하는 인터페이스.
+
+### ApplicationContext extends MessageSource
+- getMessage(String code, Object[] args, String, default, Locale, loc)
+
+### 스프링 부트를 사용한다면 별다른 설정 필요없이 message.properties를 사용할 수 있음.
+- messages.properties
+- messages_ko_kr.properties
+
+### 릴로딩 기능이 있는 메시지 소스 사용하기
+```java
+@SpringBootApplication
+public class MessagesourceApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(MessagesourceApplication.class, args);
+    }
+
+    @Bean
+    public MessageSource messageSource() {
+        ReloadableResourceBundleMessageSource messageSource = new ReloadableResourceBundleMessageSource();
+        messageSource.setBasename("classpath:/messages");
+        messageSource.setDefaultEncoding("UTF-8");
+        messageSource.setCacheSeconds(3);
+        return messageSource;
+    }
+}
+```
+
+## ApplicationEventPublisher
+> 이벤트 프로그래밍에 필요한 인터페이스 제공. 옵저버 패턴 구현체.
+
+### ApplicationContext extends ApplicationEventPublisher
+- publishEvent(ApplicationEvent event)
+
+### 이벤트 만들기
+- ApplicationEvent 상속 (스프링 4.2 부터는 이 클래스를 상속받지 않아도 이벤트로 사용할 수 있다.)
+    ```java
+    public class MyEvent {
+
+        private int data;
+        private Object source;
+
+        public MyEvent(Object source, int data) {
+            this.source = source;
+            this.data = data;
+        }
+
+        public Object getSource() {
+            return source;
+        }
+
+        public int getData() {
+            return data;
+        }
+    }
+
+    @Component
+    public class MyEventHandler {
+
+        @EventListener
+        @Order(Ordered.HIGHEST_PRECEDENCE)
+        public void handle(MyEvent myEvent) {
+            System.out.println(Thread.currentThread().toString());
+            System.out.println("이벤트 받았다. 데이터 : " + myEvent.getData());
+        }
+    }
+
+    @Component
+    public class AppRunner implements ApplicationRunner { // 4.2 버전 이전에는 extends ApplicationEventPublisher를 선언해야 했다.
+
+        @Autowired
+        ApplicationContext publishEvent;
+
+        @Override
+        public void run(ApplicationArguments args) throws Exception {
+            publishEvent.publishEvent(new MyEvent(this, 100)); // event 발생
+        }
+    }
+    ```
+
+- 이벤트 처리하는 방법
+    - ApplicationListener<이벤트> 구현한 클래스 만들어서 빈으로 등록하기.
+    - 스프링 4.2 부터는 @EventListener를 사용해서 빈의 메소드에 사용할 수 있다.
+    - 기본적으로는 synchronized.
+    - 순서를 정하고 싶다면 @Order와 함께 사용.
+    - 비동기적으로 실행하고 싶다면 @Async와 함께 사용.
+
+- 스프링이 제공하는 기본 이벤트
+    - ContextRefreshedEvent: ApplicationContext를 초기화 했더나 리프래시 했을 때 발생.
+    - ContextStartedEvent: ApplicationContext를 start()하여 라이프사이클 빈들이 시작
+    신호를 받은 시점에 발생.
+    - ContextStoppedEvent: ApplicationContext를 stop()하여 라이프사이클 빈들이 정지
+    신호를 받은 시점에 발생.
+    - ContextClosedEvent: ApplicationContext를 close()하여 싱글톤 빈 소멸되는 시점에
+    발생.
+    - RequestHandledEvent: HTTP 요청을 처리했을 때 발생.
+
+## ResourceLoader
+> 리소스를 읽어오는 기능을 제공하는 인터페이스
+### ApplicationContext extends ResourceLoader
+
+### 리소스 읽어오기
+- 파일 시스템에서 읽어오기
+- 클래스패스에서 읽어오기
+- URL로 읽어오기
+- 상대/절대 경로롤 읽어오기
+
+### Resource getResource(java.lang.String location)
