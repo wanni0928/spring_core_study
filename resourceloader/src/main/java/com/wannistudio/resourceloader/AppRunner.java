@@ -15,7 +15,15 @@ public class AppRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        Resource resource = resourceLoader.getResource("classpath:te-t.txt");
+        System.out.println(resourceLoader.getClass());
+
+        Resource resource = resourceLoader.getResource("classpath:test.txt");
+//        Resource resource = resourceLoader.getResource("test.txt");
+
+        System.out.println(resource.getClass());
         System.out.println(resource.exists());
+        System.out.println(resource.getURI());
+        System.out.println(resource.getURL());
+        System.out.println(resource.getDescription());
     }
 }

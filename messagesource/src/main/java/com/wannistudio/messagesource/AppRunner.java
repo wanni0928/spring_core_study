@@ -18,7 +18,7 @@ public class AppRunner implements ApplicationRunner {
     public void run(ApplicationArguments args) throws Exception {
         while (true) {
             System.out.println(messageSource.getMessage("greeting", new String[] {"wanni"}, Locale.KOREA));
-            System.out.println(messageSource.getMessage("greeting", new String[] {"wanni"},Locale.getDefault()));
+            System.out.println(messageSource.getMessage("greeting", new String[] {"wanni"}, Locale.getDefault()));
             Thread.sleep(1000L);
         }
     }
